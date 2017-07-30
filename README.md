@@ -1,11 +1,15 @@
+# A simple DLL library in C++
+
+[![Build Status](https://travis-ci.org/garettbass/dll.svg?branch=master)](https://travis-ci.org/garettbass/dll)
+
 ``` C++
 #include <dll/dll.hpp>
 
 int main(int argc, char* argv[]) {
-    dll::library shared {"shared"};
+    library shared {"shared"};
     assert(shared);
 
-    dll::function<int()> fourty_two {shared,"fourty_two"};
+    int(* const fourty_two)() {shared("fourty_two")};
     assert(fourty_two);
     assert(fourty_two() == 42);
 

@@ -2,10 +2,7 @@
 #include "cxx/push.h"
 #include "cxx/cxx.h"
 #include <initializer_list>
-
-#ifndef DLL_NAMESPACE
-#define DLL_NAMESPACE dll
-#endif // DLL_NAMESPACE
+#include <new>
 
 //------------------------------------------------------------------------------
 
@@ -21,7 +18,9 @@
 
 //------------------------------------------------------------------------------
 
+#ifdef DLL_NAMESPACE
 namespace DLL_NAMESPACE {
+#endif // DLL_NAMESPACE
 
     extern "C" {
 
@@ -121,6 +120,10 @@ namespace DLL_NAMESPACE {
 
     };
 
+#ifdef DLL_NAMESPACE
 } // namespace DLL_NAMESPACE
+#endif // DLL_NAMESPACE
+
+//------------------------------------------------------------------------------
 
 #include "cxx/pop.h"
