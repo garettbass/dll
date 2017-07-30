@@ -2,47 +2,60 @@
 #include "cxx/push.h"
 #include "cxx/cxx.h"
 #include <initializer_list>
-#include <tuple>
 
 #ifndef DLL_NAMESPACE
 #define DLL_NAMESPACE dll
 #endif // DLL_NAMESPACE
 
+//------------------------------------------------------------------------------
+
+#if CXX_CLANG || CXX_GCC
+
+    #define dllexport __attribute__((visibility("default")))
+
+#elif CXX_MSVC
+
+    #define dllexport __declspec(dllexport)
+
+#endif
+
+//------------------------------------------------------------------------------
+
 namespace DLL_NAMESPACE {
 
     extern "C" {
 
-    #ifdef CXX_MICROSOFT
+    #ifdef CXX_OS_MICROSOFT
 
-        inline void* open(const char* path) {
+        inline void* dll_open(const char* path) {
             extern void* __stdcall LoadLibraryA(const char*);
             return LoadLibraryA(path);
         }
 
-        inline int close(void* module) {
+        inline int dll_close(void* module) {
             extern int __stdcall FreeLibrary(void*);
             return not FreeLibrary(module);
         }
 
-        inline void* find(void* module, const char* name) {
+        inline void* dll_find(void* module, const char* name) {
             extern void* __stdcall GetProcAddress(void*,const char*);
             return GetProcAddress(module,name);
         }
 
     #else
 
-        inline void* open(const char* path) {
+        inline void* dll_open(const char* path) {
             extern void* dlopen(const char*,int);
             enum { RTLD_LAZY = 0x1, RTLD_LOCAL = 0x4 };
             return dlopen(path,RTLD_LAZY|RTLD_LOCAL);
         }
 
-        inline int close(void* module) {
+        inline int dll_close(void* module) {
             extern int dlclose(void*);
             return dlclose(module);
         }
 
-        inline void* find(void* module, const char* name) {
+        inline void* dll_find(void* module, const char* name) {
             extern void* dlsym(void*,const char*);
             return dlsym(module,name);
         }
@@ -76,7 +89,7 @@ namespace DLL_NAMESPACE {
         library(decltype(nullptr)) : library() {}
 
         library(const char* path)
-        : address(open(path)) {
+        : address(dll_open(path)) {
             if (not address) printf("library '%s' not found\n",path);
         }
 
@@ -87,19 +100,19 @@ namespace DLL_NAMESPACE {
             return *this;
         }
 
-       ~library() { if (address) { close(address); } }
+       ~library() { if (address) { dll_close(address); } }
 
         explicit operator bool() const { return address != nullptr; }
 
         operator void*() const { return address; }
 
         symbol operator ()(const char* name) const {
-            return find(address,name);
+            return dll_find(address,name);
         }
 
         symbol operator ()(name_list names) const {
             for (const char* name : names) {
-                if (void* const symbol {find(address,name)}) {
+                if (void* const symbol {dll_find(address,name)}) {
                     return symbol;
                 }
             }
@@ -108,177 +121,6 @@ namespace DLL_NAMESPACE {
 
     };
 
-    //--------------------------------------------------------------------------
-
-    template<typename Pointer, typename Result, typename... Params>
-    struct function_base {
-
-        using name_list = std::initializer_list<const char*>;
-
-        using result = Result;
-
-        using pointer = Pointer;
-
-        using parameters = std::tuple<Params...>;
-
-        template<unsigned N>
-        using parameter = typename std::tuple_element<N,parameters>::type;
-
-        enum { parameter_count = sizeof...(Params) };
-
-        pointer const address = nullptr;
-
-        function_base() = default;
-
-        function_base(decltype(nullptr)) : function_base() {}
-
-        function_base(pointer address) : address(address) {}
-
-        explicit function_base(void* address) : address(pointer(address)) {}
-
-        function_base(const library& library, const char* name)
-        : function_base(pointer(library(name))) {
-            if (not address) printf("function '%s' not found\n",name);
-        }
-
-        function_base(const library& library, name_list names)
-        : function_base(pointer(library(names))) {
-            if (not address and names.size()) {
-                printf("function '%s' not found\n",names.begin()[0]);
-            }
-        }
-
-        function_base(const function_base& rhs) = default;
-
-        function_base& operator =(const function_base& rhs) {
-            if (this != &rhs) { new(this) function_base(rhs); }
-            return *this;
-        }
-
-        operator pointer() const { return pointer(address); }
-
-        explicit operator bool() const { return address != nullptr; }
-
-        template<typename F>
-        explicit operator F() const { return F(address); }
-
-        Result operator ()(Params... params) const {
-            return pointer(address)(params...);
-        }
-
-    };
-
-    //--------------------------------------------------------------------------
-
-    template<typename Pointer>
-    struct function;
-
-    template<typename R, typename... Params>
-    struct function<R(Params...)>
-    : function_base<R(*)(Params...),R,Params...> {
-        using base = function_base<R(*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    template<typename R, typename... Params>
-    struct function<R(*)(Params...)>
-    : function_base<R(*)(Params...),R,Params...> {
-        using base = function_base<R(*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    #if CXX_MICROSOFT && CXX_X86
-
-    template<typename R, typename... Params>
-    struct function<R(__fastcall*)(Params...)>
-    : function_base<R(__fastcall*)(Params...),R,Params...> {
-        using base = function_base<R(__stdcall*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    template<typename R, typename... Params>
-    struct function<R(__stdcall*)(Params...)>
-    : function_base<R(__stdcall*)(Params...),R,Params...> {
-        using base = function_base<R(__stdcall*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    template<typename R, typename... Params>
-    struct function<R(__thiscall*)(Params...)>
-    : function_base<R(__thiscall*)(Params...),R,Params...> {
-        using base = function_base<R(__stdcall*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    template<typename R, typename... Params>
-    struct function<R(__vectorcall*)(Params...)>
-    : function_base<R(__vectorcall*)(Params...),R,Params...> {
-        using base = function_base<R(__stdcall*)(Params...),R,Params...>;
-        using base::base;
-        using base::operator=;
-    };
-
-    #endif // CXX_MICROSOFT && CXX_X86
-
 } // namespace DLL_NAMESPACE
-
-//------------------------------------------------------------------------------
-
-#if CXX_MICROSOFT
-
-    #ifndef fastcall
-    #define fastcall __fastcall
-    #endif
-
-    #ifndef stdcall
-    #define stdcall __stdcall
-    #endif
-
-    #ifndef thiscall
-    #define thiscall __thiscall
-    #endif
-
-    #ifndef vectorcall
-    #define vectorcall __vectorcall
-    #endif
-
-#else
-
-    #ifndef fastcall
-    #define fastcall
-    #endif
-
-    #ifndef stdcall
-    #define stdcall
-    #endif
-
-    #ifndef thiscall
-    #define thiscall
-    #endif
-
-    #ifndef vectorcall
-    #define vectorcall
-    #endif
-
-#endif // !(CXX_MICROSOFT && CXX_X86)
-
-//------------------------------------------------------------------------------
-
-#if CXX_CLANG || CXX_GCC
-
-    #define dllexport __attribute__((visibility("default")))
-
-#elif CXX_MICROSOFT
-
-    #define dllexport __declspec(dllexport)
-
-#endif
-
-//------------------------------------------------------------------------------
 
 #include "cxx/pop.h"
