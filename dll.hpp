@@ -24,42 +24,19 @@ namespace DLL_NAMESPACE {
 
     extern "C" {
 
-    #ifdef CXX_OS_MICROSOFT
+        #ifdef CXX_OS_MICROSOFT
 
-        inline void* dll_open(const char* path) {
             extern void* __stdcall LoadLibraryA(const char*);
-            return LoadLibraryA(path);
-        }
-
-        inline int dll_close(void* module) {
-            extern int __stdcall FreeLibrary(void*);
-            return not FreeLibrary(module);
-        }
-
-        inline void* dll_find(void* module, const char* name) {
+            extern int   __stdcall FreeLibrary(void*);
             extern void* __stdcall GetProcAddress(void*,const char*);
-            return GetProcAddress(module,name);
-        }
 
-    #else
+        #else
 
-        inline void* dll_open(const char* path) {
             extern void* dlopen(const char*,int);
-            enum { RTLD_LAZY = 0x1, RTLD_LOCAL = 0x4 };
-            return dlopen(path,RTLD_LAZY|RTLD_LOCAL);
-        }
-
-        inline int dll_close(void* module) {
-            extern int dlclose(void*);
-            return dlclose(module);
-        }
-
-        inline void* dll_find(void* module, const char* name) {
+            extern int   dlclose(void*);
             extern void* dlsym(void*,const char*);
-            return dlsym(module,name);
-        }
 
-    #endif
+        #endif
 
         extern int printf(const char*,...);
 
@@ -88,7 +65,7 @@ namespace DLL_NAMESPACE {
         library(decltype(nullptr)) : library() {}
 
         library(const char* path)
-        : address(dll_open(path)) {
+        : address(open(path)) {
             if (not address) printf("library '%s' not found\n",path);
         }
 
@@ -99,23 +76,50 @@ namespace DLL_NAMESPACE {
             return *this;
         }
 
-       ~library() { if (address) { dll_close(address); } }
+       ~library() { if (address) { close(address); } }
 
         explicit operator bool() const { return address != nullptr; }
 
         operator void*() const { return address; }
 
         symbol operator ()(const char* name) const {
-            return dll_find(address,name);
+            return find(address,name);
         }
 
         symbol operator ()(name_list names) const {
             for (const char* name : names) {
-                if (void* const symbol {dll_find(address,name)}) {
+                if (void* const symbol {find(address,name)}) {
                     return symbol;
                 }
             }
             return nullptr;
+        }
+
+    private:
+
+        static void* open(const char* path) {
+            #if CXX_OS_MICROSOFT
+                return LoadLibraryA(path);
+            #else
+                enum : int { RTLD_LAZY = 0x1, RTLD_LOCAL = 0x4 };
+                return dlopen(path,RTLD_LAZY|RTLD_LOCAL);
+            #endif
+        }
+
+        static void close(void* module) {
+            #if CXX_OS_MICROSOFT
+                FreeLibrary(module);
+            #else
+                dlclose(module);
+            #endif
+        }
+
+        static void* find(void* module, const char* name) {
+            #if CXX_OS_MICROSOFT
+                return GetProcAddress(module,name);
+            #else
+                return dlsym(module,name);
+            #endif
         }
 
     };
