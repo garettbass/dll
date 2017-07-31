@@ -1,6 +1,7 @@
 #pragma once
 #include "cxx/push.h"
 #include "cxx/cxx.h"
+#include <cstdio>
 #include <initializer_list>
 #include <new>
 
@@ -37,8 +38,6 @@ namespace DLL_NAMESPACE {
             extern void* dlsym(void*,const char*);
 
         #endif
-
-        extern int printf(const char*,...);
 
     } // extern "C"
 
